@@ -1,0 +1,4 @@
+KB ID,Title,Category,Content,Active
+KB-001,Voice AI agents,Services,"We build AI voice agents that answer and place calls, look up live data during the call, and hand off to a human when needed.",TRUE
+KB-002,Workflow automation,Services,"We automate repetitive back-office workflows with n8n, connecting CRMs, sheets, email and calendars.",TRUE
+KB-003,Pricing,Pricing,"Pricing is scoped per project after a discovery call.",TRUE
