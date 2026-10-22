@@ -1,0 +1,1132 @@
+{
+  "name": "AI Outbound Sales Caller – Call Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1456,
+        48
+      ],
+      "id": "67a3a67d-e2a8-4856-a101-f24a669d2090",
+      "name": "Every 2 Minutes"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Sales agent",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "DNC",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1216,
+        48
+      ],
+      "id": "bac06d2e-4474-400d-9d6c-73bd02b4ca4a",
+      "name": "Read DNC List",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Sales agent",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 230731512,
+          "mode": "list",
+          "cachedResultName": "call Queue",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=230731512"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -976,
+        48
+      ],
+      "id": "eaa093bf-7781-4188-abcc-44a22c8b662c",
+      "name": "Read call Queue",
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- Shared lead-geography helpers v2 (identical copy in every node that needs it) ----\n// A lead is callable only when it is inside CALL_WINDOW on a working day in EVERY one of its zones.\n// Single-zone countries -> that zone. Multi-zone countries without a known area code -> the overlap\n// of their zones. Countries spanning too many zones (e.g. Russia) need the Timezone column filled.\nconst CALL_WINDOW = { start: 9, end: 18 };\nconst FRI_SAT_WEEKEND = new Set(['Asia/Riyadh','Asia/Kuwait','Asia/Qatar','Asia/Bahrain','Asia/Muscat',\n  'Africa/Cairo','Asia/Jerusalem','Asia/Dhaka','Asia/Amman']);\nconst NANP_TZ = {\n  // US Eastern\n  '212':'America/New_York','646':'America/New_York','917':'America/New_York','718':'America/New_York','347':'America/New_York',\n  '929':'America/New_York','201':'America/New_York','973':'America/New_York','609':'America/New_York','856':'America/New_York',\n  '215':'America/New_York','412':'America/New_York','717':'America/New_York','484':'America/New_York','610':'America/New_York',\n  '267':'America/New_York','202':'America/New_York','301':'America/New_York','410':'America/New_York','443':'America/New_York',\n  '703':'America/New_York','757':'America/New_York','804':'America/New_York','404':'America/New_York','678':'America/New_York',\n  '770':'America/New_York','470':'America/New_York','305':'America/New_York','786':'America/New_York','954':'America/New_York',\n  '407':'America/New_York','321':'America/New_York','813':'America/New_York','727':'America/New_York','904':'America/New_York',\n  '423':'America/New_York','704':'America/New_York','980':'America/New_York','919':'America/New_York','336':'America/New_York',\n  '617':'America/New_York','857':'America/New_York','781':'America/New_York','508':'America/New_York','860':'America/New_York',\n  '203':'America/New_York','401':'America/New_York','207':'America/New_York','603':'America/New_York','802':'America/New_York',\n  '614':'America/New_York','216':'America/New_York','513':'America/New_York','440':'America/New_York','740':'America/New_York',\n  '313':'America/New_York','248':'America/New_York','734':'America/New_York','616':'America/New_York',\n  // US Central\n  '312':'America/Chicago','773':'America/Chicago','872':'America/Chicago','847':'America/Chicago','630':'America/Chicago',\n  '708':'America/Chicago','224':'America/Chicago','815':'America/Chicago','214':'America/Chicago','972':'America/Chicago',\n  '469':'America/Chicago','817':'America/Chicago','682':'America/Chicago','945':'America/Chicago','940':'America/Chicago',\n  '903':'America/Chicago','713':'America/Chicago','281':'America/Chicago','832':'America/Chicago','346':'America/Chicago',\n  '210':'America/Chicago','726':'America/Chicago','512':'America/Chicago','737':'America/Chicago','361':'America/Chicago',\n  '314':'America/Chicago','636':'America/Chicago','816':'America/Chicago','913':'America/Chicago','316':'America/Chicago',\n  '515':'America/Chicago','319':'America/Chicago','651':'America/Chicago','612':'America/Chicago','763':'America/Chicago',\n  '952':'America/Chicago','414':'America/Chicago','262':'America/Chicago','504':'America/Chicago','225':'America/Chicago',\n  '318':'America/Chicago','405':'America/Chicago','918':'America/Chicago','479':'America/Chicago','501':'America/Chicago',\n  '601':'America/Chicago','662':'America/Chicago','205':'America/Chicago','256':'America/Chicago','334':'America/Chicago',\n  '251':'America/Chicago','615':'America/Chicago','629':'America/Chicago','901':'America/Chicago','850':'America/Chicago',\n  // US Mountain / Arizona\n  '303':'America/Denver','720':'America/Denver','719':'America/Denver','970':'America/Denver','505':'America/Denver',\n  '575':'America/Denver','801':'America/Denver','385':'America/Denver','435':'America/Denver','406':'America/Denver',\n  '307':'America/Denver','520':'America/Phoenix','602':'America/Phoenix','623':'America/Phoenix','480':'America/Phoenix',\n  '928':'America/Phoenix',\n  // US Pacific / AK / HI\n  '206':'America/Los_Angeles','425':'America/Los_Angeles','253':'America/Los_Angeles','360':'America/Los_Angeles',\n  '564':'America/Los_Angeles','503':'America/Los_Angeles','971':'America/Los_Angeles','541':'America/Los_Angeles',\n  '458':'America/Los_Angeles','213':'America/Los_Angeles','323':'America/Los_Angeles','310':'America/Los_Angeles',\n  '424':'America/Los_Angeles','818':'America/Los_Angeles','747':'America/Los_Angeles','626':'America/Los_Angeles',\n  '661':'America/Los_Angeles','805':'America/Los_Angeles','714':'America/Los_Angeles','657':'America/Los_Angeles',\n  '949':'America/Los_Angeles','619':'America/Los_Angeles','858':'America/Los_Angeles','760':'America/Los_Angeles',\n  '442':'America/Los_Angeles','415':'America/Los_Angeles','628':'America/Los_Angeles','650':'America/Los_Angeles',\n  '408':'America/Los_Angeles','669':'America/Los_Angeles','510':'America/Los_Angeles','925':'America/Los_Angeles',\n  '707':'America/Los_Angeles','916':'America/Los_Angeles','279':'America/Los_Angeles','702':'America/Los_Angeles',\n  '725':'America/Los_Angeles','775':'America/Los_Angeles','907':'America/Anchorage','808':'Pacific/Honolulu',\n  // Canada\n  '416':'America/Toronto','647':'America/Toronto','437':'America/Toronto','905':'America/Toronto','289':'America/Toronto',\n  '365':'America/Toronto','613':'America/Toronto','343':'America/Toronto','519':'America/Toronto','226':'America/Toronto',\n  '705':'America/Toronto','249':'America/Toronto','807':'America/Toronto','514':'America/Toronto','438':'America/Toronto',\n  '450':'America/Toronto','579':'America/Toronto','418':'America/Toronto','581':'America/Toronto','819':'America/Toronto',\n  '873':'America/Toronto','604':'America/Vancouver','778':'America/Vancouver','236':'America/Vancouver','250':'America/Vancouver',\n  '672':'America/Vancouver','403':'America/Edmonton','587':'America/Edmonton','825':'America/Edmonton','780':'America/Edmonton',\n  '368':'America/Edmonton','204':'America/Winnipeg','431':'America/Winnipeg','306':'America/Regina','639':'America/Regina',\n  '902':'America/Halifax','782':'America/Halifax','506':'America/Moncton','709':'America/St_Johns'\n};\nconst NANP_FALLBACK = ['America/New_York', 'America/Los_Angeles']; // unknown +1 area code -> overlap of both coasts\nconst AU_PREFIX = { '612': ['Australia/Sydney'], '613': ['Australia/Melbourne'], '617': ['Australia/Brisbane'] };\nconst COUNTRIES = [\n  ['1','US',['united states','usa','us','america','canada','ca'],null],\n  ['7','RU',['russia','kazakhstan'],null],\n  ['20','EG',['egypt'],['Africa/Cairo']], ['27','ZA',['south africa'],['Africa/Johannesburg']],\n  ['30','GR',['greece'],['Europe/Athens']], ['31','NL',['netherlands','holland'],['Europe/Amsterdam']],\n  ['32','BE',['belgium'],['Europe/Brussels']], ['33','FR',['france'],['Europe/Paris']],\n  ['34','ES',['spain'],['Europe/Madrid']], ['36','HU',['hungary'],['Europe/Budapest']],\n  ['39','IT',['italy'],['Europe/Rome']], ['40','RO',['romania'],['Europe/Bucharest']],\n  ['41','CH',['switzerland'],['Europe/Zurich']], ['43','AT',['austria'],['Europe/Vienna']],\n  ['44','GB',['united kingdom','uk','england','scotland','wales','great britain'],['Europe/London']],\n  ['45','DK',['denmark'],['Europe/Copenhagen']], ['46','SE',['sweden'],['Europe/Stockholm']],\n  ['47','NO',['norway'],['Europe/Oslo']], ['48','PL',['poland'],['Europe/Warsaw']],\n  ['49','DE',['germany'],['Europe/Berlin']], ['51','PE',['peru'],['America/Lima']],\n  ['52','MX',['mexico'],['America/Tijuana','America/Mexico_City','America/Cancun']],\n  ['54','AR',['argentina'],['America/Argentina/Buenos_Aires']],\n  ['55','BR',['brazil'],['America/Manaus','America/Sao_Paulo']], ['56','CL',['chile'],['America/Santiago']],\n  ['57','CO',['colombia'],['America/Bogota']], ['58','VE',['venezuela'],['America/Caracas']],\n  ['60','MY',['malaysia'],['Asia/Kuala_Lumpur']],\n  ['61','AU',['australia'],['Australia/Perth','Australia/Adelaide','Australia/Sydney']],\n  ['62','ID',['indonesia'],['Asia/Jakarta','Asia/Makassar']], ['63','PH',['philippines'],['Asia/Manila']],\n  ['64','NZ',['new zealand'],['Pacific/Auckland']], ['65','SG',['singapore'],['Asia/Singapore']],\n  ['66','TH',['thailand'],['Asia/Bangkok']], ['81','JP',['japan'],['Asia/Tokyo']],\n  ['82','KR',['south korea','korea'],['Asia/Seoul']], ['84','VN',['vietnam'],['Asia/Ho_Chi_Minh']],\n  ['86','CN',['china'],['Asia/Shanghai']], ['90','TR',['turkey','turkiye'],['Europe/Istanbul']],\n  ['91','IN',['india'],['Asia/Kolkata']], ['92','PK',['pakistan'],['Asia/Karachi']],\n  ['94','LK',['sri lanka'],['Asia/Colombo']], ['212','MA',['morocco'],['Africa/Casablanca']],\n  ['233','GH',['ghana'],['Africa/Accra']], ['234','NG',['nigeria'],['Africa/Lagos']],\n  ['254','KE',['kenya'],['Africa/Nairobi']], ['351','PT',['portugal'],['Europe/Lisbon']],\n  ['353','IE',['ireland'],['Europe/Dublin']], ['358','FI',['finland'],['Europe/Helsinki']],\n  ['380','UA',['ukraine'],['Europe/Kiev']], ['420','CZ',['czech republic','czechia'],['Europe/Prague']],\n  ['852','HK',['hong kong'],['Asia/Hong_Kong']], ['880','BD',['bangladesh'],['Asia/Dhaka']],\n  ['886','TW',['taiwan'],['Asia/Taipei']], ['961','LB',['lebanon'],['Asia/Beirut']],\n  ['962','JO',['jordan'],['Asia/Amman']], ['965','KW',['kuwait'],['Asia/Kuwait']],\n  ['966','SA',['saudi arabia','ksa'],['Asia/Riyadh']], ['968','OM',['oman'],['Asia/Muscat']],\n  ['971','AE',['united arab emirates','uae','dubai','abu dhabi'],['Asia/Dubai']],\n  ['972','IL',['israel'],['Asia/Jerusalem']], ['973','BH',['bahrain'],['Asia/Bahrain']],\n  ['974','QA',['qatar'],['Asia/Qatar']], ['977','NP',['nepal'],['Asia/Kathmandu']]\n].map(([cc, iso, names, zones]) => ({ cc, iso, names, zones }));\nconst CC_INDEX = {}, NAME_INDEX = {};\nfor (const c of COUNTRIES) { CC_INDEX[c.cc] = c; NAME_INDEX[c.iso.toLowerCase()] = c; for (const n of c.names) NAME_INDEX[n] = c; }\n\nconst digitsOf = v => (v == null ? '' : v).toString().replace(/\\D/g, '');\nfunction countryByCode(d) { for (const len of [3, 2, 1]) { const c = CC_INDEX[d.slice(0, len)]; if (c) return c; } return null; }\nfunction countryByName(v) { return NAME_INDEX[(v == null ? '' : v).toString().toLowerCase().replace(/[^a-z ]/g, '').trim()] || null; }\n\n// Returns { e164, reason }. countryHint (optional Sheet1 \"Country\") is used only for numbers without + / 00.\nfunction toE164(raw, countryHint) {\n  const str = (raw == null ? '' : raw).toString().trim().replace(/^'+/, '');\n  let d = digitsOf(str);\n  if (!d) return { e164: null, reason: 'no phone number' };\n  const intl = /^(\\+|00)/.test(str);\n  if (/^00/.test(str)) d = d.slice(2);\n  if (d.length > 15) { // repair a duplicated country code, e.g. 9191XXXXXXXXXX\n    for (let n = 3; n >= 1; n--) {\n      if (d.slice(0, n) === d.slice(n, 2 * n) && d.length - 2 * n >= 7 && d.length - 2 * n <= 12) { d = d.slice(n); break; }\n    }\n  }\n  if (!intl) {\n    const hint = countryHint ? countryByName(countryHint) : null;\n    if (hint && hint.cc !== '1') { d = d.replace(/^0+/, ''); if (!d.startsWith(hint.cc)) d = hint.cc + d; }\n    else if (d.length === 10) d = '1' + d; // bare 10 digits with no country: assumed US/Canada\n  }\n  if (d.startsWith('1')) {\n    return d.length === 11 && /[2-9]/.test(d[1]) ? { e164: '+' + d, reason: '' } : { e164: null, reason: 'invalid US/Canada number' };\n  }\n  if (!countryByCode(d)) return { e164: null, reason: 'unknown country code' };\n  if (d.length < 8 || d.length > 15) return { e164: null, reason: 'invalid number length' };\n  return { e164: '+' + d, reason: '' };\n}\nfunction validZone(z) { try { return !!z && DateTime.utc().setZone(z).isValid; } catch (e) { return false; } }\nfunction parseZones(v) {\n  const zs = (v == null ? '' : v).toString().split(/[|,]/).map(z => z.trim()).filter(Boolean);\n  return zs.length && zs.every(validZone) ? zs : null;\n}\n// Returns { zones: [IANA...] | null, source }\nfunction zonesFor(e164, override) {\n  const o = parseZones(override);\n  if (o) return { zones: o, source: 'Timezone column' };\n  if (!e164) return { zones: null, source: 'no valid phone' };\n  const d = e164.replace(/^\\+/, '');\n  if (d.startsWith('1')) {\n    const tz = NANP_TZ[d.slice(1, 4)];\n    return tz ? { zones: [tz], source: 'area code' } : { zones: NANP_FALLBACK, source: 'US/Canada overlap (unknown area code)' };\n  }\n  if (AU_PREFIX[d.slice(0, 3)]) return { zones: AU_PREFIX[d.slice(0, 3)], source: 'area code' };\n  const c = countryByCode(d);\n  if (!c) return { zones: null, source: 'unknown country code' };\n  if (!c.zones) return { zones: null, source: `${c.iso} spans many time zones - fill the Timezone column` };\n  return { zones: c.zones, source: c.zones.length > 1 ? `${c.iso} overlap of ${c.zones.length} zones` : 'country' };\n}\nfunction isWorkday(localDt, zone) {\n  return FRI_SAT_WEEKEND.has(zone) ? (localDt.weekday !== 5 && localDt.weekday !== 6) : localDt.weekday <= 5;\n}\nfunction isCallable(dtUtc, zones) {\n  return zones.every(z => { const l = dtUtc.setZone(z); return isWorkday(l, z) && l.hour >= CALL_WINDOW.start && l.hour < CALL_WINDOW.end; });\n}\n// First callable moment >= fromUtc (15-minute steps, handles :30/:45 offsets and DST). ISO UTC string or null.\nfunction nextCallable(fromUtc, zones) {\n  let d = fromUtc.toUTC();\n  if (isCallable(d, zones)) return d.toISO();\n  d = d.set({ minute: Math.floor(d.minute / 15) * 15, second: 0, millisecond: 0 });\n  for (let i = 0; i < 4 * 24 * 10; i++) { d = d.plus({ minutes: 15 }); if (isCallable(d, zones)) return d.toISO(); }\n  return null;\n}\n// ---- end shared helpers ----\n\n// Decides, for the whole sheet, what (if anything) to do this run:\n//  - marks stale in-flight rows, blocks DNC, defers out-of-window rows with a real Next Attempt At,\n//  - dispatches at most MAX_IN_FLIGHT calls in total (one at a time by default).\nconst MAX_IN_FLIGHT = 1;\nconst MAX_ATTEMPTS = 4;     // total dials per lead (initial + 3 retries); must match the listener\nconst STALE_MINUTES = 30;   // Dispatched/Dispatching with no webhook after this -> manual check\nconst AGENT_ID = Number($env.OMNIDIM_AGENT_ID || 0);\nconst now = DateTime.utc();\nconst DUE = ['Ready to Dispatch', 'Awaiting Calling Window'];\nconst IN_FLIGHT = ['Dispatched', 'Dispatching'];\nconst S = v => (v == null ? '' : v).toString().trim();\n\nconst dnc = new Set($('Read DNC List').all().map(i => digitsOf(i.json['Phone Number'])).filter(Boolean));\nconst rows = $input.all().map(i => i.json).filter(r => r && r.row_number);\nfor (const r of rows) if (S(r['Call Status']) === 'Do Not Call') { const d = digitsOf(r['Phone Number']); if (d) dnc.add(d); }\n\nconst out = [];\nconst upd = (r, status, next) => out.push({ json: { action: 'update', row_number: r.row_number,\n  new_status: status, next_attempt_at: next == null ? S(r['Next Attempt At']) : next } });\n\nlet inFlight = 0;\nconst busy = new Set();\nfor (const r of rows) {\n  if (!IN_FLIGHT.includes(S(r['Call Status']))) continue;\n  const at = DateTime.fromISO(S(r['Dispatched At']), { zone: 'utc' });\n  if (!at.isValid || now.diff(at, 'minutes').minutes > STALE_MINUTES) { upd(r, 'Stale - No Webhook - Check Manually', null); continue; }\n  inFlight++; busy.add(digitsOf(r['Phone Number']));\n}\n\nconst eligible = [];\nfor (const r of rows) {\n  if (!DUE.includes(S(r['Call Status']))) continue;\n  const phone = toE164(r['Phone Number']).e164;\n  if (!phone) { upd(r, 'Needs Manual Review - invalid phone', ''); continue; }\n  const geo = zonesFor(phone, r['Timezone']);\n  if (!geo.zones) { upd(r, 'Needs Manual Review - set Timezone', ''); continue; }\n  if (dnc.has(digitsOf(phone))) { upd(r, 'Do Not Call', ''); continue; }\n  if (!S(r['Grounded Solution'])) { upd(r, 'Needs Manual Review - insufficient verified content', ''); continue; }\n  const attempts = parseInt(r['Retry Count'], 10) || 0;\n  const cap = S(r['Outcome']) === 'Callback Requested' ? MAX_ATTEMPTS + 1 : MAX_ATTEMPTS;\n  if (attempts >= cap) { upd(r, 'No Answer - Max Retries Reached', ''); continue; }\n  const nextRaw = S(r['Next Attempt At']);\n  let dueAt = now;\n  if (nextRaw) {\n    const t = DateTime.fromISO(nextRaw, { zone: 'utc' });\n    if (!t.isValid) { upd(r, 'Needs Manual Review - invalid Next Attempt At', nextRaw); continue; }\n    if (t > now) continue;          // not due yet\n    dueAt = t;\n  }\n  if (!isCallable(now, geo.zones)) {\n    const n = nextCallable(now, geo.zones);\n    if (!n) { upd(r, 'Needs Manual Review - no shared calling hours, set Timezone', ''); continue; }\n    if (n && n !== nextRaw) upd(r, 'Awaiting Calling Window', n);\n    continue;\n  }\n  if (busy.has(digitsOf(phone))) continue;  // same number already on a call\n  eligible.push({ r, phone, attempts, dueAt });\n}\n\neligible.sort((a, b) => (a.dueAt.toMillis() - b.dueAt.toMillis()) || (a.r.row_number - b.r.row_number));\nconst slots = Math.max(0, MAX_IN_FLIGHT - inFlight);\nconst picked = new Set();\nfor (const e of eligible) {\n  if (picked.size >= slots) break;\n  if (picked.has(digitsOf(e.phone))) continue;\n  picked.add(digitsOf(e.phone));\n  const r = e.r;\n  out.push({ json: {\n    action: 'dispatch', row_number: r.row_number, attempts_after: e.attempts + 1,\n    to_number: e.phone, dispatched_at: now.toISO(),\n    dispatch_body: { agent_id: AGENT_ID, to_number: e.phone, call_context: {\n            lead_ref: `${r.row_number}-${e.attempts + 1}`,\n      company: S(r['Company']), dm_name: S(r['DM Name']), dm_title: S(r['DM Title']),\n      key_pain_points: S(r['Key Pain Points']), pain_point_used: S(r['Pain Point Used']),\n      competitor_angle: S(r['Competitor Angle']), solution_description: S(r['Grounded Solution'])\n    } }\n  } });\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -736,
+        48
+      ],
+      "id": "7273bcd4-7761-46df-a7d6-981ef500f103",
+      "name": "Select Next Lead"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "442974b8-b7d0-4fc4-9446-719e459b318f",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "dispatch",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -496,
+        48
+      ],
+      "id": "df467339-6f73-4305-b52c-8db6dd54dbec",
+      "name": "Is Dispatch?"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Sales agent",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 230731512,
+          "mode": "list",
+          "cachedResultName": "call Queue",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=230731512"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Call Status": "Dispatching",
+            "Dispatched At": "={{ $json.dispatched_at }}",
+            "Retry Count": "={{ $json.attempts_after }}",
+            "Call ID": "",
+            "row_number": "={{ $json.row_number }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website",
+              "displayName": "Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DM Name",
+              "displayName": "DM Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DM Title",
+              "displayName": "DM Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DM Email",
+              "displayName": "DM Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Key Pain Points",
+              "displayName": "Key Pain Points",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Competitor Gap",
+              "displayName": "Competitor Gap",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pain Point Used",
+              "displayName": "Pain Point Used",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Competitor Angle",
+              "displayName": "Competitor Angle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Grounded Solution",
+              "displayName": "Grounded Solution",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cited Sources",
+              "displayName": "Cited Sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Call Status",
+              "displayName": "Call Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Outcome",
+              "displayName": "Outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Call Summary",
+              "displayName": "Call Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Queued At",
+              "displayName": "Queued At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Next Attempt At",
+              "displayName": "Next Attempt At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Retry Count",
+              "displayName": "Retry Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Call ID",
+              "displayName": "Call ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Dispatched At",
+              "displayName": "Dispatched At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Timezone",
+              "displayName": "Timezone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -256,
+        -112
+      ],
+      "id": "df7b876b-8f4b-4739-901f-d9c34cdd9beb",
+      "name": "Claim Row (Dispatching)",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      },
+      "notes": "Claims the row BEFORE calling the API, so an overlapping run or a crash can never dial it twice."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://backend.omnidim.io/api/v1/calls/dispatch",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Is Dispatch?').item.json.dispatch_body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -16,
+        -112
+      ],
+      "id": "a25700bb-f750-4aa5-9e00-e79b21f8de29",
+      "name": "Dispatch Call - OmniDimension",
+      "retryOnFail": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "httpHeaderAuth (configure in n8n)"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "NO automatic retry: a retried POST can place a second real phone call. All outcomes are classified in the next node."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Turns the HTTP result into a safe state. Ambiguous outcomes are NEVER retried automatically.\nconst lead = $('Is Dispatch?').item.json;\nconst r = $json;\nconst s = typeof r.statusCode === 'number' ? r.statusCode : null;\nlet b = r.body;\nif (typeof b === 'string') { try { b = JSON.parse(b); } catch (e) { b = {}; } }\nb = b || {};\nconst d = b.data || {};\nconst callId = [b.call_id, b.callId, b.id, b.request_id, d.call_id, d.callId, d.id].find(v => v != null && v !== '');\nconst err = r.error || null;\nconst errMsg = err ? (err.message || JSON.stringify(err)).toString().slice(0, 300) : '';\nconst netCode = err ? (err.code || (err.cause && err.cause.code) || '') : '';\nconst later = mins => DateTime.utc().plus({ minutes: mins }).toISO();\nlet status, next = '', refund = false, alert = '';\nif (s !== null && s >= 200 && s < 300) {\n  status = 'Dispatched';\n  if (!callId) console.warn(`[DISPATCH] row=${lead.row_number} 2xx without call id; listener will match by phone. body=${JSON.stringify(b).slice(0, 300)}`);\n} else if (s === 429) {\n  status = 'Awaiting Calling Window'; next = later(10); refund = true;\n} else if (s === 401 || s === 402 || s === 403) {\n  status = 'Awaiting Calling Window'; next = later(60); refund = true;\n  alert = `OmniDimension rejected the dispatch (HTTP ${s}). Check the API key / account credits. Row ${lead.row_number} rescheduled.`;\n} else if (s !== null && s >= 400 && s < 500) {\n  status = 'Dispatch Failed - Check Number';\n  alert = `OmniDimension rejected row ${lead.row_number} (HTTP ${s}): ${JSON.stringify(b).slice(0, 300)}`;\n} else if (['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(netCode)) {\n  status = 'Awaiting Calling Window'; next = later(10); refund = true; // request never reached the provider\n} else {\n  status = 'Dispatch Unknown - Check Manually';\n  alert = `Dispatch outcome unknown for row ${lead.row_number} (HTTP ${s === null ? 'none' : s} ${netCode} ${errMsg}). NOT retried to avoid a duplicate call - check OmniDimension call logs.`;\n}\nreturn { json: { row_number: lead.row_number, new_status: status, call_id: callId ? String(callId) : '',\n  next_attempt_at: next, retry_count: refund ? lead.attempts_after - 1 : lead.attempts_after,\n  http_status: s, alert } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -112
+      ],
+      "id": "edba98c4-3286-4ba6-9d25-5cfc20ffd503",
+      "name": "Classify Dispatch Result"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Sales agent",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 230731512,
+          "mode": "list",
+          "cachedResultName": "call Queue",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=230731512"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Call Status": "={{ $json.new_status }}",
+            "Call ID": "={{ $json.call_id }}",
+            "Next Attempt At": "={{ $json.next_attempt_at }}",
+            "Retry Count": "={{ $json.retry_count }}",
+            "row_number": "={{ $json.row_number }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website",
+              "displayName": "Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DM Name",
+              "displayName": "DM Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DM Title",
+              "displayName": "DM Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DM Email",
+              "displayName": "DM Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Key Pain Points",
+              "displayName": "Key Pain Points",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Competitor Gap",
+              "displayName": "Competitor Gap",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pain Point Used",
+              "displayName": "Pain Point Used",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Competitor Angle",
+              "displayName": "Competitor Angle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Grounded Solution",
+              "displayName": "Grounded Solution",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cited Sources",
+              "displayName": "Cited Sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Call Status",
+              "displayName": "Call Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Outcome",
+              "displayName": "Outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Call Summary",
+              "displayName": "Call Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Queued At",
+              "displayName": "Queued At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Next Attempt At",
+              "displayName": "Next Attempt At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Retry Count",
+              "displayName": "Retry Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Call ID",
+              "displayName": "Call ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Dispatched At",
+              "displayName": "Dispatched At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Timezone",
+              "displayName": "Timezone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        464,
+        -112
+      ],
+      "id": "6f22009b-02cb-4f28-88c0-7fd0fb423311",
+      "name": "Save Dispatch Result",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "681a80a0-d86e-4165-ac88-879dafc9c2a8",
+              "leftValue": "={{ $('Classify Dispatch Result').item.json.alert }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        704,
+        -112
+      ],
+      "id": "eb96f8ad-9974-4b3b-b4c6-a55fc7178994",
+      "name": "Needs Alert?"
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $('Classify Dispatch Result').item.json.alert }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        944,
+        -112
+      ],
+      "id": "cb59c848-e992-47d1-a9c2-48380734982e",
+      "name": "Raise Dispatch Alert",
+      "notes": "Fails the execution on purpose so the Error Alerts workflow emails the team."
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Sales agent",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 230731512,
+          "mode": "list",
+          "cachedResultName": "call Queue",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=230731512"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Call Status": "={{ $json.new_status }}",
+            "Next Attempt At": "={{ $json.next_attempt_at }}",
+            "row_number": "={{ $json.row_number }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website",
+              "displayName": "Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DM Name",
+              "displayName": "DM Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DM Title",
+              "displayName": "DM Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DM Email",
+              "displayName": "DM Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Key Pain Points",
+              "displayName": "Key Pain Points",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Competitor Gap",
+              "displayName": "Competitor Gap",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pain Point Used",
+              "displayName": "Pain Point Used",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Competitor Angle",
+              "displayName": "Competitor Angle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Grounded Solution",
+              "displayName": "Grounded Solution",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cited Sources",
+              "displayName": "Cited Sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Call Status",
+              "displayName": "Call Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Outcome",
+              "displayName": "Outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Call Summary",
+              "displayName": "Call Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Queued At",
+              "displayName": "Queued At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Next Attempt At",
+              "displayName": "Next Attempt At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Retry Count",
+              "displayName": "Retry Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Call ID",
+              "displayName": "Call ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Dispatched At",
+              "displayName": "Dispatched At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Timezone",
+              "displayName": "Timezone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -256,
+        192
+      ],
+      "id": "7f1cd446-8127-4e74-87eb-c9425e714fb3",
+      "name": "Apply Row Updates",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Read DNC List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read DNC List": {
+      "main": [
+        [
+          {
+            "node": "Read call Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read call Queue": {
+      "main": [
+        [
+          {
+            "node": "Select Next Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Next Lead": {
+      "main": [
+        [
+          {
+            "node": "Is Dispatch?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Dispatch?": {
+      "main": [
+        [
+          {
+            "node": "Claim Row (Dispatching)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Apply Row Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Row (Dispatching)": {
+      "main": [
+        [
+          {
+            "node": "Dispatch Call - OmniDimension",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch Call - OmniDimension": {
+      "main": [
+        [
+          {
+            "node": "Classify Dispatch Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify Dispatch Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Dispatch Result": {
+      "main": [
+        [
+          {
+            "node": "Save Dispatch Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Dispatch Result": {
+      "main": [
+        [
+          {
+            "node": "Needs Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Alert?": {
+      "main": [
+        [
+          {
+            "node": "Raise Dispatch Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "meta": {},
+  "tags": []
+}
